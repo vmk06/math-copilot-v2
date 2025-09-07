@@ -9,16 +9,16 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
     "katex": "^0.16.22",
     "next": "15.5.2",
     "openai": "^5.19.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "react-markdown": "^8.0.7",
-    "rehype-katex": "^6.0.3",
-    "remark-math": "^5.1.1",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0",
     "typescript": "^5"
   },
   "devDependencies": {
@@ -28,5 +28,10 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
     "tailwindcss": "^4"
+  },
+  "overrides": {
+    "vfile": "^6.0.1",
+    "vfile-message": "^4.0.2",
+    "unist-util-stringify-position": "^4.0.0"
   }
 }
