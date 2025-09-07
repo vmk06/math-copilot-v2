@@ -1,142 +1,299 @@
 // File: src/app/page.tsx
-"use client"; 
+"use client";
 
-import { useState, FormEvent } from 'react';
-import 'katex/dist/katex.min.css';
+import React, { useRef, useState, FormEvent } from "react";
+import "katex/dist/katex.min.css";
 
-import ReactMarkdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import type { PluggableList } from "unified";
 
-// Helper to parse the structured response from the AI
-const parseAIResponse = (responseText: string) => {
-  const hints = [];
-  const hint1 = responseText.match(/<HINT_1>([\s\S]*?)<\/HINT_1>/);
-  const hint2 = responseText.match(/<HINT_2>([\s\S]*?)<\/HINT_2>/);
-  const hint3 = responseText.match(/<HINT_3>([\s\S]*?)<\/HINT_3>/);
-  const solution = responseText.match(/<FULL_SOLUTION>([\s\S]*?)<\/FULL_SOLUTION>/);
+/** Brand bits (quiet parent brand) */
+const PRODUCT = "Math Olympiad Coach";
+const ENDORSEMENT = "from MathMakki";
+const VERSION = "v1";
 
-  if (hint1) hints.push(hint1[1].trim());
-  if (hint2) hints.push(hint2[1].trim());
-  if (hint3) hints.push(hint3[1].trim());
-
-  return {
-    hints,
-    solution: solution ? solution[1].trim() : "Sorry, I couldn't generate a full solution.",
+/**
+ * Parse staged output from the API.
+ * Accepts <HINT_1>, <HINT_2>, <HINT_3>, and <SOLUTION> (or <FULL_SOLUTION>).
+ */
+function parseAIResponse(text: string) {
+  const pull = (name: string) => {
+    const m = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`, "i").exec(text);
+    return m?.[1]?.trim() ?? "";
   };
-};
+  const hints = [pull("HINT_1"), pull("HINT_2"), pull("HINT_3")].filter(Boolean) as string[];
+  const solution = pull("SOLUTION") || pull("FULL_SOLUTION");
+  return { hints, solution };
+}
 
-export default function HomePage() {
-  const [problem, setProblem] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  
+// Safe casts to avoid occasional unified/vfile type mismatches
+const REMARK_PLUGINS = [remarkMath] as unknown as PluggableList;
+const REHYPE_PLUGINS = [rehypeKatex] as unknown as PluggableList;
+
+/** Example prompts (LaTeX escaped for KaTeX) */
+const EXAMPLES: string[] = [
+  "Prove that for any prime $p>3$, $p^2 \\\\equiv 1 \\\\pmod{24}$.",
+  "Find all integer solutions $x^2-3y^2=1$ with $x,y>0$.",
+  "In $\\\\triangle ABC$ with $AB=AC$, prove that $A=60^{\\\\circ}$ if $\\\\angle B + \\\\angle C = 2\\\\angle A$.",
+  "How many 6-digit numbers have digit sum $10$?",
+  "Among any $n+1$ integers, show two have difference divisible by $n$."
+];
+
+export default function Page() {
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const [hints, setHints] = useState<string[]>([]);
-  const [solution, setSolution] = useState('');
-  const [currentHintIndex, setCurrentHintIndex] = useState(-1);
-  const [showSolution, setShowSolution] = useState(false);
+  const [solution, setSolution] = useState<string>("");
+  const [currentHintIndex, setCurrentHintIndex] = useState(0);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsLoading(true);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  async function onSubmit(e?: FormEvent) {
+    e?.preventDefault();
+    if (!query.trim()) return;
+
+    setLoading(true);
+    setError(null);
     setHints([]);
-    setSolution('');
-    setCurrentHintIndex(-1);
-    setShowSolution(false);
-
-    const response = await fetch('/api/solve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ problem: problem }),
-    });
-
-    const data = await response.json();
-    const parsedData = parseAIResponse(data.solution);
-    
-    setHints(parsedData.hints);
-    setSolution(parsedData.solution);
+    setSolution("");
     setCurrentHintIndex(0);
-    setIsLoading(false);
-  };
 
-  const handleNextHint = () => {
-    if (currentHintIndex < hints.length - 1) {
-      setCurrentHintIndex(currentHintIndex + 1);
+    try {
+      // Send both keys so the API can accept either
+      const res = await fetch("/api/solve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: query, problem: query })
+      });
+
+      let raw = "";
+      const ct = res.headers.get("content-type") || "";
+      if (ct.includes("application/json")) {
+        const data = await res.json();
+        raw =
+          (data?.solution ||
+            data?.text ||
+            data?.message ||
+            data?.content ||
+            data?.output_text ||
+            "") + "";
+        if (!raw && data?.output?.[0]?.content?.[0]?.text) raw = data.output[0].content[0].text;
+        if (!raw && typeof data === "string") raw = data;
+      } else {
+        raw = await res.text();
+      }
+
+      if (!res.ok) throw new Error(raw || `Request failed (${res.status})`);
+
+      const parsed = parseAIResponse(raw);
+      setHints(parsed.hints);
+      setSolution(parsed.solution);
+    } catch (err: any) {
+      setError(err?.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
-  const handleShowSolution = () => {
-    setShowSolution(true);
-  };
+  function useExample(text: string, autoSubmit = false) {
+    setQuery(text);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+    if (autoSubmit) onSubmit();
+  }
+
+  const canRevealAnother = currentHintIndex < hints.length;
 
   return (
-    <main className="flex min-h-screen flex-col items-center p-12 bg-gray-900 text-white">
-      <h1 className="text-4xl font-bold mb-8">Math Olympiad Co-Pilot</h1>
-      
-      <form onSubmit={handleSubmit} className="w-full max-w-2xl">
-        <label htmlFor="problemInput" className="block text-lg font-medium mb-2">
-          Enter your math problem:
-        </label>
-        <textarea
-          id="problemInput"
-          value={problem} 
-          onChange={(e) => setProblem(e.target.value)}
-          className="w-full h-40 p-4 bg-gray-800 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-          placeholder="e.g., 'Prove that for any prime p > 3, p^2 ≡ 1 (mod 24).'"
-        ></textarea>
-        
-        <button 
-          type="submit"
-          className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 disabled:bg-gray-500"
-          disabled={isLoading || !problem}
-        >
-          {isLoading ? 'Thinking...' : 'Begin Tutoring'}
-        </button>
-      </form>
+    <main className="min-h-screen bg-slate-900 text-slate-100">
+      <div className="mx-auto max-w-3xl px-4 py-10">
+        <h1 className="text-center text-3xl font-extrabold">{PRODUCT}</h1>
+        <p className="mt-2 text-center text-sm text-slate-400">
+          Learn by thinking — hints → strategy → solution.
+        </p>
 
-      {/* Display Hints */}
-      {currentHintIndex >= 0 && !showSolution && (
-        <div className="w-full max-w-2xl mt-8">
-          {hints.slice(0, currentHintIndex + 1).map((hint, index) => (
-            <div key={index} className="prose prose-invert max-w-none bg-gray-800 rounded-lg p-6 mb-4">
-              <h2 className="text-2xl font-bold mb-4">Hint {index + 1}:</h2>
-              <div className="not-prose">
-                <ReactMarkdown 
-                  remarkPlugins={[remarkMath]} 
-                  rehypePlugins={[rehypeKatex]}
+        {/* Input form */}
+        <form onSubmit={onSubmit} className="mt-8 space-y-4">
+          <label className="block text-sm text-slate-300">Enter your math problem:</label>
+          <textarea
+            ref={textareaRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={`e.g., "Prove that for any prime p > 3, p^2 ≡ 1 (mod 24)."`}
+            className="h-40 w-full resize-y rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+
+          {/* Example chips */}
+          <div className="flex flex-wrap gap-2">
+            {EXAMPLES.map((ex) => (
+              <button
+                key={ex}
+                type="button"
+                onClick={() => useExample(ex)}
+                className="rounded-full border border-slate-700 bg-slate-800/70 px-3 py-1 text-xs text-slate-200 hover:bg-slate-700/60"
+                title="Click to load this example"
+              >
+                Try: {ex.length > 60 ? ex.slice(0, 60) + "…" : ex}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || !query.trim()}
+            className="w-full rounded-xl bg-indigo-600 py-3 font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Thinking…" : "Begin Tutoring"}
+          </button>
+        </form>
+
+        {/* Error banner */}
+        {error && (
+          <div className="mt-4 rounded-xl border border-red-400 bg-red-500/10 p-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+
+        {/* Hints */}
+        {hints.length > 0 && (
+          <section className="mt-8">
+            {hints.slice(0, currentHintIndex).map((hint, idx) => (
+              <div key={idx} className="prose prose-invert max-w-none rounded-lg bg-slate-800 p-6 mb-4">
+                <h2 className="mb-4 text-2xl font-bold">Hint {idx + 1}:</h2>
+                <div className="not-prose">
+                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
+                    {hint}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            ))}
+
+            <div className="mt-2 flex flex-wrap gap-3">
+              {canRevealAnother && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentHintIndex((n) => Math.min(n + 1, hints.length))}
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm hover:bg-slate-700/60"
                 >
-                  {hint}
+                  Reveal next hint
+                </button>
+              )}
+
+              {!solution && hints.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentHintIndex(hints.length)}
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm hover:bg-slate-700/60"
+                >
+                  Reveal all hints
+                </button>
+              )}
+
+              {solution && (
+                <a
+                  href="#solution"
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+                >
+                  Jump to solution
+                </a>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Solution */}
+        {solution && (
+          <section id="solution" className="mt-8 w-full max-w-2xl">
+            <div className="prose prose-invert max-w-none rounded-lg bg-slate-800 p-6">
+              <h2 className="mb-4 text-2xl font-bold">Full Solution</h2>
+              <div className="not-prose">
+                <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
+                  {solution}
                 </ReactMarkdown>
               </div>
             </div>
-          ))}
+          </section>
+        )}
 
-          {/* Logic for the next hint / show solution buttons */}
-          {currentHintIndex < hints.length - 1 ? (
-            <button onClick={handleNextHint} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg">
-              Show Next Hint
-            </button>
-          ) : (
-            <button onClick={handleShowSolution} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg">
-              Show Full Solution
-            </button>
-          )}
-        </div>
-      )}
+        {/* About / Mission / Roadmap */}
+        <section className="mx-auto mt-10 max-w-2xl text-slate-200">
+          <div className="rounded-2xl border border-slate-700/60 bg-slate-800/60 p-5">
+            <h2 className="text-lg font-semibold">What is this?</h2>
+            <p className="mt-2 text-slate-300">
+              {PRODUCT} helps beginners <span className="font-semibold">learn by thinking</span>.
+              Instead of dumping full solutions, it uses <span className="font-semibold">staged hints → strategy → full solution</span>
+              so you stay in control of the reasoning.
+            </p>
 
-      {/* Display Full Solution */}
-      {showSolution && (
-        <div className="w-full max-w-2xl mt-8 prose prose-invert max-w-none bg-gray-800 rounded-lg p-6">
-          <h2 className="text-2xl font-bold mb-4">Full Solution:</h2>
-          <div className="not-prose">
-            <ReactMarkdown 
-              remarkPlugins={[remarkMath]} 
-              rehypePlugins={[rehypeKatex]}
-            >
-              {solution}
-            </ReactMarkdown>
+            <h3 className="mt-4 text-base font-semibold">How it helps</h3>
+            <ul className="mt-2 list-inside list-disc text-slate-300">
+              <li>Stepwise hints before revealing solutions</li>
+              <li>“Check my reasoning” to validate your approach</li>
+              <li>Clean typeset math (KaTeX)</li>
+              <li>Export/share solutions with teachers & peers</li>
+            </ul>
+
+            <h3 className="mt-4 text-base font-semibold">Roadmap</h3>
+            <ul className="mt-2 list-inside list-disc text-slate-300">
+              <li>IOQM/RMO topic packs & daily drills</li>
+              <li>Error log + targeted “fix-it” practice</li>
+              <li>Teacher mode: worksheet generator & printable keys</li>
+              <li>Progress tracker, streaks, shareable sessions</li>
+            </ul>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <a
+                href="#teacher"
+                className="rounded-full border border-slate-600 bg-slate-700/50 px-3 py-1 text-xs text-slate-100 hover:bg-slate-700"
+              >
+                Teacher resources (coming soon)
+              </a>
+              <span className="rounded-full border border-slate-600 bg-slate-700/50 px-2 py-1 text-xs">
+                {ENDORSEMENT}
+              </span>
+              <span className="rounded-full border border-slate-600 bg-slate-700/50 px-2 py-1 text-xs">
+                {VERSION}
+              </span>
+            </div>
           </div>
-        </div>
-      )}
+        </section>
+
+        {/* Placeholder Teacher section */}
+        <section id="teacher" className="mx-auto mt-8 max-w-2xl text-slate-200">
+          <div className="rounded-2xl border border-slate-700/60 bg-slate-800/40 p-5">
+            <h2 className="text-lg font-semibold">Teacher resources</h2>
+            <p className="mt-2 text-slate-300">
+              We’re building a teacher mode with worksheet generation, hint levels, printable keys,
+              and class tracking. If you’d like early access or to share feedback, reach out!
+            </p>
+            <div className="mt-3 text-sm text-slate-300">
+              Contact:{" "}
+              <a className="text-indigo-400 hover:underline" href="mailto:hello@mathmakki.org">
+                hello@mathmakki.org
+              </a>
+            </div>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="mt-12 border-t border-slate-800 pt-6 text-center text-sm text-slate-400">
+          <div>Built with ❤ by MathMakki</div>
+          <div className="mt-2 space-x-4">
+            <a className="hover:underline" href="#">
+              Privacy
+            </a>
+            <a className="hover:underline" href="#">
+              Terms
+            </a>
+            <a className="hover:underline" href="mailto:hello@mathmakki.org">
+              Contact
+            </a>
+          </div>
+        </footer>
+      </div>
     </main>
   );
 }
