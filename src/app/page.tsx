@@ -9,7 +9,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import type { PluggableList } from "unified";
 
-/** Brand bits (quiet parent brand) */
+/** Brand bits */
 const PRODUCT = "Math Olympiad Coach";
 const ENDORSEMENT = "from MathMakki";
 const VERSION = "v1";
@@ -32,7 +32,7 @@ function parseAIResponse(text: string) {
 const REMARK_PLUGINS = [remarkMath] as unknown as PluggableList;
 const REHYPE_PLUGINS = [rehypeKatex] as unknown as PluggableList;
 
-/** Example prompts (LaTeX escaped for KaTeX) */
+/** Example prompts (escaped for KaTeX) */
 const EXAMPLES: string[] = [
   "Prove that for any prime $p>3$, $p^2 \\\\equiv 1 \\\\pmod{24}$.",
   "Find all integer solutions $x^2-3y^2=1$ with $x,y>0$.",
@@ -63,7 +63,6 @@ export default function Page() {
     setCurrentHintIndex(0);
 
     try {
-      // Send both keys so the API can accept either
       const res = await fetch("/api/solve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -92,14 +91,15 @@ export default function Page() {
       const parsed = parseAIResponse(raw);
       setHints(parsed.hints);
       setSolution(parsed.solution);
-    } catch (err: any) {
-      setError(err?.message || "Something went wrong.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
   }
 
-  function useExample(text: string, autoSubmit = false) {
+  /** Not a Hook: keep name without 'use' to satisfy rules-of-hooks */
+  function loadExample(text: string, autoSubmit = false) {
     setQuery(text);
     requestAnimationFrame(() => textareaRef.current?.focus());
     if (autoSubmit) onSubmit();
@@ -132,7 +132,7 @@ export default function Page() {
               <button
                 key={ex}
                 type="button"
-                onClick={() => useExample(ex)}
+                onClick={() => loadExample(ex)}
                 className="rounded-full border border-slate-700 bg-slate-800/70 px-3 py-1 text-xs text-slate-200 hover:bg-slate-700/60"
                 title="Click to load this example"
               >
