@@ -97,10 +97,9 @@ export default function HomePage() {
       {currentHintIndex >= 0 && !showSolution && (
         <div className="w-full max-w-2xl mt-8">
           {hints.slice(0, currentHintIndex + 1).map((hint, index) => (
-            <div key={index} className="bg-gray-800 rounded-lg p-6 mb-4">
+            <div key={index} className="prose prose-invert max-w-none bg-gray-800 rounded-lg p-6 mb-4">
               <h2 className="text-2xl font-bold mb-4">Hint {index + 1}:</h2>
-              {/* Note: No 'prose' class here either now */}
-              <div className="max-w-none">
+              <div className="not-prose">
                 <ReactMarkdown 
                   remarkPlugins={[remarkMath]} 
                   rehypePlugins={[rehypeKatex]}
@@ -126,10 +125,9 @@ export default function HomePage() {
 
       {/* Display Full Solution */}
       {showSolution && (
-        <div className="w-full max-w-2xl mt-8 bg-gray-800 rounded-lg p-6">
+        <div className="w-full max-w-2xl mt-8 prose prose-invert max-w-none bg-gray-800 rounded-lg p-6">
           <h2 className="text-2xl font-bold mb-4">Full Solution:</h2>
-          {/* *** THIS IS THE MAIN CHANGE *** I have removed 'prose prose-invert' from this div */}
-          <div className="max-w-none">
+          <div className="not-prose">
             <ReactMarkdown 
               remarkPlugins={[remarkMath]} 
               rehypePlugins={[rehypeKatex]}
