@@ -14,8 +14,10 @@ function polish(text) {
   s = s.replace(/```[\s\S]*?```/g, "");
   s = s.replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (_m, inner) => `\n$$\n${inner.trim()}\n$$\n`);
   s = s.replace(/\\\(\s*([\s\S]*?)\s*\\\)/g, (_m, inner) => `$${inner.trim()}$`);
-  s = s.replace(/^\s*\$\s*$/gm, "$$");
+  s = s.replace(/(^|\n)\s*\$\s*\n([\s\S]*?)\n\s*\$\s*(\n|$)/g, (_m, p1, inner, p3) => `${p1}$$\n${inner.trim()}\n$$${p3}`);
+  s = s.replace(/\$\$([\s\S]*?)\$\$/g, (_m, inner) => `\n$$\n${inner.trim()}\n$$\n`);
   s = s.replace(/[ \t]*\$\$[ \t]*/g, "\n$$\n");
+  s = s.replace(/^\s*\$\s*$/gm, "");
   s = s.replace(/\n{3,}/g, "\n\n");
   return s.trim();
 }
@@ -67,14 +69,10 @@ Global constraints (MUST follow):
 - Produce at least one hint (HINT_1 is required; include HINT_2 and HINT_3 if helpful).
 - Do NOT include any text outside the HINT_* and FULL_SOLUTION tags.
 - Do NOT use backticks or code fences.
-- Do not use calculus or university-level mathematics.
-- Define all variables clearly.
-- Use Markdown for formatting and **bold** for the four section headers in FULL_SOLUTION.
-- Use LaTeX for ALL mathematical notation, with '$...$' for inline and '$$...$$' for display math.
-- Never place a single '$' on a line by itself; for display math, wrap the content inside one pair of '$$...$$' on their own lines.
-- For multi-line derivations, prefer $$\\begin{aligned} ... \\end{aligned}$$ to align steps.
-- Prefer symbols like \\equiv, \\pmod{n}, \\frac{a}{b}, \\binom{n}{k}, and exponents ^{ }.
-- Keep paragraphs short; put important equations in $$...$$ blocks; avoid long prose walls.`;
+- Use LaTeX for ALL mathematics; inline: $...$, display: $$...$$ on their own lines.
+- Never place a single '$' on a line by itself (use $$ for display math).
+- Prefer symbols like \\equiv, \\pmod{n}, \\frac{a}{b}, \\binom{n}{k}, exponents ^{ }.
+- Keep paragraphs short; put important equations in $$...$$ blocks; use $$\\begin{aligned}...\\end{aligned}$$ for multi-line derivations.`;
 
     const client = getClient();
     const resp = await client.responses.create({
